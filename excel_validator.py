@@ -139,13 +139,15 @@ class ExcelValidator:
             logger.error(f"Validation failed for {file_name}: {str(e)}")
             raise
 
-    def load_files(self, file1_path: str, file2_path: str) -> None:
+    def load_files(self, file1_path: str, file2_path: str, mapping1: dict = None, mapping2: dict = None) -> None:
         """
-        Load and validate both Excel files.
+        Load and validate both Excel files with optional column mapping.
         
         Args:
             file1_path (str): Path to the first Excel file
             file2_path (str): Path to the second Excel file
+            mapping1 (dict): Column mapping for first file
+            mapping2 (dict): Column mapping for second file
         """
         try:
             # Store file names for later use
@@ -153,8 +155,24 @@ class ExcelValidator:
             self.file2_name = Path(file2_path).name
             
             # Read both files
-            self.df1 = self.read_excel_file(file1_path)
-            self.df2 = self.read_excel_file(file2_path)
+            df1 = self.read_excel_file(file1_path)
+            df2 = self.read_excel_file(file2_path)
+            
+            # Apply column mapping if provided
+            if mapping1:
+                df1 = df1.rename(columns={v: k for k, v in mapping1.items()})
+            if mapping2:
+                df2 = df2.rename(columns={v: k for k, v in mapping2.items()})
+            
+            # Round revenue and sale_amount columns to whole numbers
+            df1['revenue'] = df1['revenue'].astype(float).apply(np.floor)
+            df1['sale_amount'] = df1['sale_amount'].astype(float).apply(np.floor)
+            df2['revenue'] = df2['revenue'].astype(float).apply(np.floor)
+            df2['sale_amount'] = df2['sale_amount'].astype(float).apply(np.floor)
+            
+            # Store the DataFrames
+            self.df1 = df1
+            self.df2 = df2
             
             # Validate both DataFrames
             self.validate_dataframe(self.df1, self.file1_name)
@@ -164,6 +182,130 @@ class ExcelValidator:
             
         except Exception as e:
             logger.error(f"Error loading files: {str(e)}")
+            raise
+
+    def apply_validation_rules(self, df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """
+        Apply validation rules according to the use case requirements.
+        
+        Returns:
+            Dict containing DataFrames for each validation rule result
+        """
+        try:
+            logger.info("Applying validation rules")
+            
+            # Initialize result containers
+            valid_records = []
+            revenue_mismatches = []
+            status_mismatches = []
+            both_mismatches = []
+            
+            # Get common transaction IDs
+            common_txns = set(df1['txn_id']).intersection(set(df2['txn_id']))
+            
+            for txn_id in common_txns:
+                record1 = df1[df1['txn_id'] == txn_id].iloc[0]
+                record2 = df2[df2['txn_id'] == txn_id].iloc[0]
+                
+                # Calculate rates
+                rate1 = round(record1['revenue'] / record1['sale_amount'], 2) if record1['sale_amount'] != 0 else 0
+                rate2 = round(record2['revenue'] / record2['sale_amount'], 2) if record2['sale_amount'] != 0 else 0
+                
+                # Base record for comparison
+                comparison = {
+                    'txn_id': txn_id,
+                    f'status_{self.file1_name}': record1['status'],
+                    f'status_{self.file2_name}': record2['status'],
+                    f'revenue_{self.file1_name}': record1['revenue'],
+                    f'revenue_{self.file2_name}': record2['revenue'],
+                    f'sale_amount_{self.file1_name}': record1['sale_amount'],
+                    f'sale_amount_{self.file2_name}': record2['sale_amount'],
+                    f'rate_{self.file1_name}': rate1,
+                    f'rate_{self.file2_name}': rate2,
+                    f'brand_{self.file1_name}': record1['brand'],
+                    f'brand_{self.file2_name}': record2['brand']
+                }
+                
+                # Check if all relevant fields match exactly
+                status_matches = str(record1['status']) == str(record2['status'])
+                revenue_matches = str(record1['revenue']) == str(record2['revenue'])
+                sale_amount_matches = str(record1['sale_amount']) == str(record2['sale_amount'])
+                rates_match = rate1 == rate2
+                
+                # Rule 1: All fields must match exactly
+                if status_matches and revenue_matches and sale_amount_matches and rates_match:
+                    comparison['validation_result'] = 'Valid'
+                    valid_records.append(comparison)
+                
+                # Rule 2: Status matches but revenue/sale_amount/rate doesn't
+                elif status_matches and not (revenue_matches and sale_amount_matches and rates_match):
+                    comparison['validation_result'] = (
+                        'Revenue mismatch due to different sale amounts' if rates_match
+                        else 'Revenue mismatch due to different rates'
+                    )
+                    revenue_mismatches.append(comparison)
+                
+                # Rule 3: Status doesn't match but revenue matches
+                elif not status_matches and revenue_matches:
+                    comparison['validation_result'] = 'Status needs update'
+                    status_mismatches.append(comparison)
+                
+                # Rule 4: Both status and revenue don't match
+                else:
+                    comparison['validation_result'] = (
+                        'Status mismatch and revenue mismatch due to different sale amounts' if rates_match
+                        else 'Status mismatch and revenue mismatch due to different rates'
+                    )
+                    both_mismatches.append(comparison)
+            
+            # Convert lists to DataFrames
+            validation_results = {
+                'valid_records': pd.DataFrame(valid_records) if valid_records else pd.DataFrame(),
+                'revenue_mismatches': pd.DataFrame(revenue_mismatches) if revenue_mismatches else pd.DataFrame(),
+                'status_mismatches': pd.DataFrame(status_mismatches) if status_mismatches else pd.DataFrame(),
+                'both_mismatches': pd.DataFrame(both_mismatches) if both_mismatches else pd.DataFrame()
+            }
+            
+            logger.info("Validation rules applied successfully")
+            return validation_results
+            
+        except Exception as e:
+            logger.error(f"Error applying validation rules: {str(e)}")
+            raise
+
+    def find_duplicate_transactions(self, df1: pd.DataFrame, df2: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """
+        Find duplicate transaction IDs in both files.
+        
+        Returns:
+            Dict containing DataFrames with duplicate transactions
+        """
+        try:
+            logger.info("Checking for duplicate transaction IDs")
+            
+            # Find duplicates in each DataFrame
+            duplicates_df1 = df1[df1.duplicated(subset=['txn_id'], keep=False)].copy()
+            duplicates_df2 = df2[df2.duplicated(subset=['txn_id'], keep=False)].copy()
+            
+            # Add source file indicator
+            if not duplicates_df1.empty:
+                duplicates_df1['source_file'] = self.file1_name
+            if not duplicates_df2.empty:
+                duplicates_df2['source_file'] = self.file2_name
+            
+            # Combine duplicates from both files
+            duplicate_records = {
+                'duplicates_file1': duplicates_df1,
+                'duplicates_file2': duplicates_df2
+            }
+            
+            logger.info(f"Found {len(duplicates_df1)} duplicate records in {self.file1_name}")
+            logger.info(f"Found {len(duplicates_df2)} duplicate records in {self.file2_name}")
+            
+            return duplicate_records
+        
+        except Exception as e:
+            logger.error(f"Error finding duplicate transactions: {str(e)}")
             raise
 
     def compare_dataframes(self) -> Dict[str, Any]:
@@ -180,18 +322,25 @@ class ExcelValidator:
             df1 = self.df1.copy()
             df2 = self.df2.copy()
             
+            # Find duplicate transactions before comparison
+            duplicate_records = self.find_duplicate_transactions(df1, df2)
+            
+            # Remove duplicates from comparison DataFrames
+            df1_clean = df1.drop_duplicates(subset=['txn_id'], keep=False)
+            df2_clean = df2.drop_duplicates(subset=['txn_id'], keep=False)
+            
             # Ensure txn_id is string type in both DataFrames
-            df1['txn_id'] = df1['txn_id'].astype(str)
-            df2['txn_id'] = df2['txn_id'].astype(str)
+            df1_clean['txn_id'] = df1_clean['txn_id'].astype(str)
+            df2_clean['txn_id'] = df2_clean['txn_id'].astype(str)
             
             # Find common and unique transaction IDs
-            common_txns = set(df1['txn_id']).intersection(set(df2['txn_id']))
-            only_in_df1_txns = set(df1['txn_id']) - set(df2['txn_id'])
-            only_in_df2_txns = set(df2['txn_id']) - set(df1['txn_id'])
+            common_txns = set(df1_clean['txn_id']).intersection(set(df2_clean['txn_id']))
+            only_in_df1_txns = set(df1_clean['txn_id']) - set(df2_clean['txn_id'])
+            only_in_df2_txns = set(df2_clean['txn_id']) - set(df1_clean['txn_id'])
             
             # Get records present only in each DataFrame
-            only_in_df1 = df1[df1['txn_id'].isin(only_in_df1_txns)]
-            only_in_df2 = df2[df2['txn_id'].isin(only_in_df2_txns)]
+            only_in_df1 = df1_clean[df1_clean['txn_id'].isin(only_in_df1_txns)]
+            only_in_df2 = df2_clean[df2_clean['txn_id'].isin(only_in_df2_txns)]
             
             # Initialize lists for matching and mismatching records
             matching_records = []
@@ -199,11 +348,19 @@ class ExcelValidator:
             
             # Compare records with matching transaction IDs
             for txn_id in common_txns:
-                record1 = df1[df1['txn_id'] == txn_id].iloc[0]
-                record2 = df2[df2['txn_id'] == txn_id].iloc[0]
+                record1 = df1_clean[df1_clean['txn_id'] == txn_id].iloc[0]
+                record2 = df2_clean[df2_clean['txn_id'] == txn_id].iloc[0]
                 
                 # Compare all columns except txn_id
-                differences = {'txn_id': txn_id}
+                differences = {
+                    'txn_id': txn_id,
+                    f'brand_{self.file1_name}': record1['brand'],
+                    f'brand_{self.file2_name}': record2['brand'],
+                    f'revenue_{self.file1_name}': record1['revenue'],
+                    f'revenue_{self.file2_name}': record2['revenue'],
+                    f'sale_amount_{self.file1_name}': record1['sale_amount'],
+                    f'sale_amount_{self.file2_name}': record2['sale_amount']
+                }
                 has_mismatch = False
                 
                 for column in [col for col in self.REQUIRED_COLUMNS if col != 'txn_id']:
@@ -212,8 +369,9 @@ class ExcelValidator:
                     
                     if val1 != val2:
                         has_mismatch = True
-                        differences[f"{column}_{self.file1_name}"] = val1
-                        differences[f"{column}_{self.file2_name}"] = val2
+                        if column not in ['brand', 'revenue', 'sale_amount']:  # Skip these as they're already added
+                            differences[f"{column}_{self.file1_name}"] = val1
+                            differences[f"{column}_{self.file2_name}"] = val2
                 
                 if has_mismatch:
                     mismatched_records.append(differences)
@@ -231,8 +389,8 @@ class ExcelValidator:
                 'only_in_df1': only_in_df1,
                 'only_in_df2': only_in_df2,
                 'summary': {
-                    'total_records_file1': len(df1),
-                    'total_records_file2': len(df2),
+                    'total_records_file1': len(df1_clean),
+                    'total_records_file2': len(df2_clean),
                     'matching_records_count': len(matching_records),
                     'mismatched_records_count': len(only_in_df1),
                     'only_in_file1_count': len(only_in_df1),
@@ -240,13 +398,26 @@ class ExcelValidator:
                 }
             }
             
+            # Add validation rules results
+            validation_results = self.apply_validation_rules(df1_clean, df2_clean)
+            comparison_results.update(validation_results)
+            
+            # Update comparison_results to include duplicate records
+            comparison_results.update(duplicate_records)
+            
+            # Update summary to include duplicate counts
+            comparison_results['summary'].update({
+                'duplicates_file1_count': len(duplicate_records['duplicates_file1']),
+                'duplicates_file2_count': len(duplicate_records['duplicates_file2'])
+            })
+            
             logger.info("DataFrame comparison completed successfully")
             
             # Print detailed comparison results
             print("\nComparison Results:")
             print("=" * 80)
-            print(f"Total records in {self.file1_name}: {len(df1)}")
-            print(f"Total records in {self.file2_name}: {len(df2)}")
+            print(f"Total records in {self.file1_name}: {len(df1_clean)}")
+            print(f"Total records in {self.file2_name}: {len(df2_clean)}")
             print(f"Matching records: {len(matching_records)}")
             print(f"Records with mismatches: {len(only_in_df1)}")
             print(f"Records only in {self.file1_name}: {len(only_in_df1)}")
@@ -284,16 +455,16 @@ class ExcelValidator:
 
     def calculate_rates(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate rates for each brand and date, and aggregate revenue by status.
+        Calculate rates for each brand with status-wise revenue and date range grouping.
         """
         try:
-            logger.info("Calculating rates by brand and date")
+            logger.info("Calculating rates by brand and date range")
             
             # Create a copy to avoid modifying original DataFrame
             df_calc = df.copy()
             
-            # Format date as YYYY-MM-DD string
-            df_calc['date_str'] = df_calc['created'].dt.strftime('%Y-%m-%d')
+            # Convert date to month-year format for date range
+            df_calc['date_range'] = df_calc['created'].dt.strftime('%Y-%m')
             
             # Calculate rate for each transaction
             df_calc['rate'] = df_calc.apply(
@@ -302,71 +473,68 @@ class ExcelValidator:
                 axis=1
             )
             
-            # Calculate status-wise revenue and count
-            status_summary = df_calc.groupby('status').agg({
-                'revenue': 'sum',
-                'txn_id': 'count'
-            }).reset_index()
+            # Group by brand and date_range
+            brand_summary = []
             
-            # Group by brand and date
-            brand_date_rates = df_calc.groupby(['brand', 'date_str']).agg({
-                'revenue': 'sum',
-                'sale_amount': 'sum',
-                'rate': list,
-                'txn_id': 'count',
-                'status': list
-            }).reset_index()
-            
-            # Calculate overall rate for each brand-date combination
-            brand_date_rates['calculated_rate'] = (
-                brand_date_rates['revenue'] / brand_date_rates['sale_amount']
-            ).round(2)
-            
-            # Create a more readable format
-            readable_rates = []
-            for _, row in brand_date_rates.iterrows():
-                brand = row['brand']
-                date = row['date_str']
+            for (brand, date_range), group in df_calc.groupby(['brand', 'date_range']):
+                # Calculate overall metrics
+                total_revenue = group['revenue'].sum()
+                total_sale_amount = group['sale_amount'].sum()
+                calculated_rate = round(total_revenue / total_sale_amount, 2) if total_sale_amount != 0 else 0
+                transaction_count = len(group)
                 
-                # Get status-wise revenue and count for this brand-date combination
-                status_details = df_calc[
-                    (df_calc['brand'] == brand) & 
-                    (df_calc['date_str'] == date)
-                ].groupby('status').agg({
-                    'revenue': 'sum',
-                    'txn_id': 'count'
-                }).reset_index()
+                # Calculate status-wise metrics
+                status_metrics = {}
+                for status, status_group in group.groupby('status'):
+                    status_metrics.update({
+                        f'revenue_{status.lower()}': status_group['revenue'].sum(),
+                        f'count_{status.lower()}': len(status_group),
+                        f'rate_{status.lower()}': round(
+                            status_group['revenue'].sum() / status_group['sale_amount'].sum(), 2
+                        ) if status_group['sale_amount'].sum() != 0 else 0
+                    })
                 
-                # Get rates as a list
-                rates = row['rate']
+                # Get individual rates as a list
+                rates = group['rate'].tolist()
                 rates_str = ', '.join([f"{rate:.2f}" for rate in rates])
                 
+                # Create summary record
                 record = {
                     'brand': brand,
-                    'date': date,
+                    'date_range': date_range,
                     'rates': rates_str,
-                    'total_revenue': row['revenue'],
-                    'total_sale_amount': row['sale_amount'],
-                    'transaction_count': row['txn_id'],
-                    'calculated_rate': row['calculated_rate']
+                    'total_revenue': total_revenue,
+                    'total_sale_amount': total_sale_amount,
+                    'transaction_count': transaction_count,
+                    'calculated_rate': calculated_rate,
+                    **status_metrics  # Include status-wise metrics
                 }
                 
-                # Add status-wise revenue and count
-                for _, status_row in status_details.iterrows():
-                    status = status_row['status']
-                    record[f'revenue_{status.lower()}'] = status_row['revenue']
-                    record[f'count_{status.lower()}'] = status_row['txn_id']
-                
-                readable_rates.append(record)
+                brand_summary.append(record)
             
-            result_df = pd.DataFrame(readable_rates)
+            result_df = pd.DataFrame(brand_summary)
+            
+            # Calculate overall status-wise summary
+            status_summary = df_calc.groupby('status').agg({
+                'revenue': 'sum',
+                'txn_id': 'count',
+                'sale_amount': 'sum'
+            }).reset_index()
+            
+            # Add calculated rate for each status
+            status_summary['rate'] = status_summary.apply(
+                lambda row: round(row['revenue'] / row['sale_amount'], 2) 
+                if row['sale_amount'] != 0 else 0, 
+                axis=1
+            )
             
             # Convert status_summary to dictionary format
             status_dict = {}
             for _, row in status_summary.iterrows():
                 status_dict[row['status']] = {
                     'revenue': row['revenue'],
-                    'txn_id': row['txn_id']
+                    'txn_id': row['txn_id'],
+                    'rate': row['rate']
                 }
             
             # Add total status-wise summary to the result
@@ -407,7 +575,7 @@ class ExcelValidator:
             merged_rates = pd.merge(
                 rates_df1, 
                 rates_df2, 
-                on=['brand', 'date'], 
+                on=['brand', 'date_range'], 
                 suffixes=('_file1', '_file2'),
                 how='inner'
             )
@@ -427,14 +595,60 @@ class ExcelValidator:
         except Exception as e:
             logger.error(f"Error comparing rates: {str(e)}")
             raise
-                
+
+    def suggest_column_mapping(self, headers):
+        """
+        Suggests column mapping based on common patterns in header names.
+        """
+        # Convert headers to lowercase for case-insensitive matching
+        headers_lower = [str(h).lower().strip() for h in headers]
+        mapping = {}
+        
+        # Define common patterns for each required field
+        patterns = {
+            'txn_id': ['txn_id', 'transaction_id', 'txn', 'transaction', 'id', 'order id', 'orderid'],
+            'revenue': ['revenue', 'rev', 'earning', 'commission', 'payment', 'payout'],
+            'sale_amount': ['sale_amount', 'sale', 'amount', 'price', 'value', 'order sum', 'ordersum', 'order_amount'],
+            'status': ['status', 'state', 'condition', 'order_status', 'orderstatus'],
+            'brand': ['brand', 'brand_name', 'advertiser', 'merchant', 'campaign_app_name', 'app_name', 'campaign'],
+            'created': ['created', 'date', 'created_at', 'created_date', 'transaction_date', 'action time', 'datetime']
+        }
+        
+        # Find best match for each required column
+        for required_col, patterns_list in patterns.items():
+            # First try exact matches
+            for pattern in patterns_list:
+                pattern_lower = pattern.lower()
+                if pattern_lower in headers_lower:
+                    idx = headers_lower.index(pattern_lower)
+                    mapping[required_col] = headers[idx]
+                    break
+            
+            # If no exact match found, try partial matches
+            if required_col not in mapping:
+                for header, header_lower in zip(headers, headers_lower):
+                    # Try to find a pattern within the header
+                    for pattern in patterns_list:
+                        pattern_lower = pattern.lower()
+                        if pattern_lower in header_lower or header_lower in pattern_lower:
+                            mapping[required_col] = header
+                            break
+                    if required_col in mapping:
+                        break
+        
+        # Log the mapping results
+        logger.info(f"Headers found: {headers}")
+        logger.info(f"Suggested mapping: {mapping}")
+        
+        return mapping
+
 def main():
     validator = ExcelValidator()
     
     try:
         validator.load_files(
-            file1_path="C:/Users/Poojan1.Patel/OneDrive - Reliance Corporate IT Park Limited/Desktop/Validations/Client_data.xlsx",
-            file2_path="C:/Users/Poojan1.Patel/OneDrive - Reliance Corporate IT Park Limited/Desktop/Validations/My_data.xlsx"
+            file1_path="C:/Validations/Client_data.xlsx",
+            file2_path="C:/Validations/My_data.xlsx"
         )
         print("Files loaded successfully!")
         
@@ -475,7 +689,7 @@ def main():
         rates_df1 = rate_results['rates_file1']
         for _, row in rates_df1.iterrows():
             print(f"Brand: {row['brand']}")
-            print(f"Date: {row['date']}")
+            print(f"Date: {row['date_range']}")
             print(f"Individual Rates: {row['rates']}")
             print(f"Calculated Rate: {row['calculated_rate']}")
             print(f"Total Revenue: {row['total_revenue']}")
@@ -501,7 +715,7 @@ def main():
         rates_df2 = rate_results['rates_file2']
         for _, row in rates_df2.iterrows():
             print(f"Brand: {row['brand']}")
-            print(f"Date: {row['date']}")
+            print(f"Date: {row['date_range']}")
             print(f"Individual Rates: {row['rates']}")
             print(f"Calculated Rate: {row['calculated_rate']}")
             print(f"Total Revenue: {row['total_revenue']}")

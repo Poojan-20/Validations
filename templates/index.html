@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validations Brahamstra</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .upload-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .file-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .file-input-group label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        .file-input {
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .file-input:hover {
+            border-color: #999;
+        }
+
+        .submit-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .submit-btn:hover {
+            background-color: #45a049;
+        }
+
+        .submit-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #error-message {
+            color: red;
+            text-align: center;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .instructions {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .instructions h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .mapping-container {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .mapping-group {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .mapping-group label {
+            align-self: center;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .mapping-group select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .mapping-title {
+            margin-bottom: 15px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .stats-container {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin: 5px 0;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .processing-step {
+            margin: 5px 0;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .step-complete {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .processed-files {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .processed-files table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .processed-files th,
+        .processed-files td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .processed-files th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+
+        .processed-files tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .download-link {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        .download-link:hover {
+            text-decoration: underline;
+        }
+
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Validations Brahamstra</h1>
+        
+        <form id="uploadForm" class="upload-form">
+            <div class="file-input-group">
+                <label for="file1">First Excel File:</label>
+                <input type="file" id="file1" name="file1" class="file-input" accept=".xlsx,.xls" required>
+                <div id="mapping1" class="mapping-container">
+                    <div class="mapping-title">Map columns for first file:</div>
+                    <div class="mapping-group">
+                        <label for="txn_id_1">Transaction ID:</label>
+                        <select name="txn_id_1" required>
+                            <option value="">Select Transaction ID Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="revenue_1">Revenue:</label>
+                        <select name="revenue_1" required>
+                            <option value="">Select Revenue Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="sale_amount_1">Sale Amount:</label>
+                        <select name="sale_amount_1" required>
+                            <option value="">Select Sale Amount Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="status_1">Status:</label>
+                        <select name="status_1" required>
+                            <option value="">Select Status Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="brand_1">Brand:</label>
+                        <select name="brand_1" required>
+                            <option value="">Select Brand Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="created_1">Created Date:</label>
+                        <select name="created_1" required>
+                            <option value="">Select Created Date Column</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="file-input-group">
+                <label for="file2">Second Excel File:</label>
+                <input type="file" id="file2" name="file2" class="file-input" accept=".xlsx,.xls" required>
+                <div id="mapping2" class="mapping-container">
+                    <div class="mapping-title">Map columns for second file:</div>
+                    <div class="mapping-group">
+                        <label for="txn_id_2">Transaction ID:</label>
+                        <select name="txn_id_2" required>
+                            <option value="">Select Transaction ID Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="revenue_2">Revenue:</label>
+                        <select name="revenue_2" required>
+                            <option value="">Select Revenue Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="sale_amount_2">Sale Amount:</label>
+                        <select name="sale_amount_2" required>
+                            <option value="">Select Sale Amount Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="status_2">Status:</label>
+                        <select name="status_2" required>
+                            <option value="">Select Status Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="brand_2">Brand:</label>
+                        <select name="brand_2" required>
+                            <option value="">Select Brand Column</option>
+                        </select>
+                    </div>
+                    <div class="mapping-group">
+                        <label for="created_2">Created Date:</label>
+                        <select name="created_2" required>
+                            <option value="">Select Created Date Column</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">Compare Files</button>
+        </form>
+
+        <div id="loading">Processing files... Please wait.</div>
+        <div id="error-message"></div>
+
+        <div id="progress-container" class="progress-container">
+            <h3>Processing Progress</h3>
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <div id="progress-text" style="text-align: center; margin-top: 10px;">0%</div>
+            <div id="processing-steps">
+                <div class="processing-step" id="step-loading">Loading files...</div>
+                <div class="processing-step" id="step-validation">Validating data...</div>
+                <div class="processing-step" id="step-comparison">Comparing records...</div>
+                <div class="processing-step" id="step-calculation">Calculating rates...</div>
+                <div class="processing-step" id="step-report">Generating report...</div>
+            </div>
+        </div>
+
+        <div id="stats-container" class="stats-container">
+            <h3>Processing Statistics</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-records">0</div>
+                    <div class="stat-label">Total Records</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="matching-records">0</div>
+                    <div class="stat-label">Matching Records</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="mismatch-records">0</div>
+                    <div class="stat-label">Mismatched Records</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="duplicate-records">0</div>
+                    <div class="stat-label">Duplicate Records</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h2>Instructions</h2>
+            <ul>
+                <li>Upload two Excel files (.xlsx or .xls format)</li>
+                <li>Files must contain the following columns: txn_id, revenue, sale_amount, status, brand, created</li>
+                <li>The system will compare the files and generate a detailed report</li>
+                <li>The report will include matching records, mismatches, and calculated rates</li>
+                <li>Results will be downloaded automatically as an Excel file</li>
+            </ul>
+        </div>
+
+        <div class="processed-files">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Processed Files History</h2>
+                <button onclick="loadProcessedFiles()" class="refresh-btn">
+                    Refresh List
+                </button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Date Processed</th>
+                        <th>Size</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="processed-files-list">
+                    <!-- Files will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Function to read Excel headers
+        async function getExcelHeaders(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/get_headers', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to read file headers');
+            }
+            
+            return await response.json();
+        }
+
+        // Function to populate select options
+        function populateSelectOptions(data, containerID) {
+            const selects = document.querySelectorAll(`#${containerID} select`);
+            
+            // Ensure data has the expected structure
+            if (!data || !Array.isArray(data.headers)) {
+                console.error('Invalid data format received:', data);
+                return;
+            }
+            
+            const headers = data.headers;
+            const suggestedMapping = data.suggested_mapping || {};
+            
+            selects.forEach(select => {
+                // Store the field name (e.g., 'txn_id', 'revenue', etc.)
+                const fieldName = select.name.split('_')[0];
+                
+                // Create default "Select" option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = `Select ${fieldName.replace('_', ' ').toUpperCase()} Column`;
+                
+                // Clear all existing options
+                select.innerHTML = '';
+                
+                // Add the default option
+                select.appendChild(defaultOption);
+                
+                // Add all header options
+                headers.forEach(header => {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header;
+                    select.appendChild(option);
+                });
+                
+                // Set suggested value if available
+                if (suggestedMapping[fieldName]) {
+                    select.value = suggestedMapping[fieldName];
+                    // If the suggested value wasn't found in headers, revert to default
+                    if (!select.value) {
+                        select.value = '';
+                        console.warn(`Suggested mapping "${suggestedMapping[fieldName]}" not found in headers for ${fieldName}`);
+                    }
+                }
+            });
+            
+            // Log mappings for debugging
+            console.log('Suggested mappings:', suggestedMapping);
+            selects.forEach(select => {
+                console.log(`${select.name} mapped to:`, select.value);
+            });
+        }
+
+        // Handle file input changes
+        document.getElementById('file1').addEventListener('change', async function(e) {
+            try {
+                const response = await getExcelHeaders(this.files[0]);
+                document.getElementById('mapping1').style.display = 'block';
+                populateSelectOptions(response, 'mapping1');
+            } catch (error) {
+                document.getElementById('error-message').textContent = error.message;
+                document.getElementById('error-message').style.display = 'block';
+            }
+        });
+
+        document.getElementById('file2').addEventListener('change', async function(e) {
+            try {
+                const response = await getExcelHeaders(this.files[0]);
+                document.getElementById('mapping2').style.display = 'block';
+                populateSelectOptions(response, 'mapping2');
+            } catch (error) {
+                document.getElementById('error-message').textContent = error.message;
+                document.getElementById('error-message').style.display = 'block';
+            }
+        });
+
+        // Function to update progress
+        function updateProgress(step, percentage) {
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const stepElement = document.getElementById(`step-${step}`);
+            
+            progressFill.style.width = `${percentage}%`;
+            progressText.textContent = `${percentage}%`;
+            
+            // Mark current step as active
+            document.querySelectorAll('.processing-step').forEach(el => {
+                el.classList.remove('step-complete');
+            });
+            stepElement.classList.add('step-complete');
+        }
+
+        // Function to update statistics
+        function updateStats(stats) {
+            document.getElementById('total-records').textContent = stats.total_records || 0;
+            document.getElementById('matching-records').textContent = stats.matching_records || 0;
+            document.getElementById('mismatch-records').textContent = stats.mismatched_records || 0;
+            document.getElementById('duplicate-records').textContent = stats.duplicate_records || 0;
+        }
+
+        // Function to load processed files
+        async function loadProcessedFiles() {
+            try {
+                const response = await fetch('/get_processed_files');
+                const files = await response.json();
+                
+                const tableBody = document.getElementById('processed-files-list');
+                tableBody.innerHTML = '';
+                
+                files.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                files.forEach(file => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${file.name}</td>
+                        <td>${file.date}</td>
+                        <td>${file.size}</td>
+                        <td>
+                            <a href="/download_processed/${file.name}" 
+                               class="download-link" 
+                               download>Download</a>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading processed files:', error);
+            }
+        }
+
+        // Load processed files when page loads
+        document.addEventListener('DOMContentLoaded', loadProcessedFiles);
+
+        // Update the form submission handler
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const errorMessage = document.getElementById('error-message');
+            const progressContainer = document.getElementById('progress-container');
+            const statsContainer = document.getElementById('stats-container');
+            
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            errorMessage.style.display = 'none';
+            progressContainer.style.display = 'block';
+            statsContainer.style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('file1', document.getElementById('file1').files[0]);
+            formData.append('file2', document.getElementById('file2').files[0]);
+            
+            // Add mapping information
+            const mapping1 = {
+                txn_id: document.querySelector('[name="txn_id_1"]').value,
+                revenue: document.querySelector('[name="revenue_1"]').value,
+                sale_amount: document.querySelector('[name="sale_amount_1"]').value,
+                status: document.querySelector('[name="status_1"]').value,
+                brand: document.querySelector('[name="brand_1"]').value,
+                created: document.querySelector('[name="created_1"]').value
+            };
+            
+            const mapping2 = {
+                txn_id: document.querySelector('[name="txn_id_2"]').value,
+                revenue: document.querySelector('[name="revenue_2"]').value,
+                sale_amount: document.querySelector('[name="sale_amount_2"]').value,
+                status: document.querySelector('[name="status_2"]').value,
+                brand: document.querySelector('[name="brand_2"]').value,
+                created: document.querySelector('[name="created_2"]').value
+            };
+            
+            formData.append('mapping1', JSON.stringify(mapping1));
+            formData.append('mapping2', JSON.stringify(mapping2));
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Set up event source for progress updates
+                const eventSource = new EventSource('/progress');
+                
+                eventSource.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    updateProgress(data.step, data.percentage);
+                    if (data.stats) {
+                        updateStats(data.stats);
+                    }
+                    if (data.complete) {
+                        eventSource.close();
+                    }
+                };
+                
+                // Get the filename from the response headers
+                const contentDisposition = response.headers.get('content-disposition');
+                const filename = contentDisposition
+                    ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+                    : 'validation_results.xlsx';
+                
+                // Create a blob from the response and download it
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                // After successful processing, refresh the file list
+                await loadProcessedFiles();
+                
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
