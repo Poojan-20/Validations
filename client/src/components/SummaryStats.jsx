@@ -88,6 +88,8 @@ const SummaryStats = ({ summaryData }) => {
   if (!summaryData) return null;
 
   const {
+    file1_name = "Client Data",
+    file2_name = "Trackier Data",
     total_records_file1 = 0,
     total_records_file2 = 0,
     matching_records_count = 0,
@@ -116,7 +118,7 @@ const SummaryStats = ({ summaryData }) => {
           title="Total Records"
           value={formatNumber(total_records_file1 + total_records_file2)}
           icon={FiUsers}
-          description={`File 1: ${formatNumber(total_records_file1)} | File 2: ${formatNumber(total_records_file2)}`}
+          description={`${file1_name}: ${formatNumber(total_records_file1)} | ${file2_name}: ${formatNumber(total_records_file2)}`}
         />
         
         <StatCard
@@ -137,20 +139,20 @@ const SummaryStats = ({ summaryData }) => {
           title="Duplicate Records"
           value={formatNumber(duplicates_file1_count + duplicates_file2_count)}
           icon={FiAlertCircle}
-          description={`File 1: ${formatNumber(duplicates_file1_count)} | File 2: ${formatNumber(duplicates_file2_count)}`}
+          description={`${file1_name}: ${formatNumber(duplicates_file1_count)} | ${file2_name}: ${formatNumber(duplicates_file2_count)}`}
         />
       </div>
 
       {/* Revenue Overview */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Revenue (File 1)"
+          title={`${file1_name} Revenue`}
           value={formatCurrency(total_revenue_file1)}
           icon={FaRupeeSign}
         />
         
         <StatCard
-          title="Total Revenue (File 2)"
+          title={`${file2_name} Revenue`}
           value={formatCurrency(total_revenue_file2)}
           icon={FaRupeeSign}
         />
@@ -159,7 +161,7 @@ const SummaryStats = ({ summaryData }) => {
           title="Revenue Difference"
           value={formatCurrency(Math.abs(total_revenue_file1 - total_revenue_file2))}
           icon={FaRupeeSign}
-          description={total_revenue_file1 > total_revenue_file2 ? "File 1 higher" : "File 2 higher"}
+          description={total_revenue_file1 > total_revenue_file2 ? `${file1_name} higher` : `${file2_name} higher`}
         />
         
         <StatCard
@@ -174,13 +176,13 @@ const SummaryStats = ({ summaryData }) => {
       {/* Status-wise Revenue */}
       <div className="grid gap-6 md:grid-cols-2">
         <StatusRevenueCard 
-          title="File 1 Status-wise Revenue" 
+          title={`${file1_name} Status-wise Revenue`} 
           statusRevenue={status_revenue_file1} 
           totalRevenue={total_revenue_file1} 
         />
         
         <StatusRevenueCard 
-          title="File 2 Status-wise Revenue" 
+          title={`${file2_name} Status-wise Revenue`} 
           statusRevenue={status_revenue_file2} 
           totalRevenue={total_revenue_file2} 
         />
@@ -190,7 +192,7 @@ const SummaryStats = ({ summaryData }) => {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardContent className="pt-6">
-            <h3 className="text-lg font-semibold mb-4">File 1 Details</h3>
+            <h3 className="text-lg font-semibold mb-4">{file1_name} Details</h3>
             <dl className="space-y-3">
               <div className="flex justify-between items-center">
                 <dt className="text-muted-foreground">Total Records</dt>
@@ -214,7 +216,7 @@ const SummaryStats = ({ summaryData }) => {
 
         <Card>
           <CardContent className="pt-6">
-            <h3 className="text-lg font-semibold mb-4">File 2 Details</h3>
+            <h3 className="text-lg font-semibold mb-4">{file2_name} Details</h3>
             <dl className="space-y-3">
               <div className="flex justify-between items-center">
                 <dt className="text-muted-foreground">Total Records</dt>
