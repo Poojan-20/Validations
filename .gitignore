@@ -52,4 +52,7 @@ ENV/
 # Project specific
 uploads/
 processed_files/
-*.log 
+*.log
+
+# Node modules
+node_modules/ 
