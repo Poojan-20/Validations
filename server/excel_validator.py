@@ -164,7 +164,13 @@ class ExcelValidator:
             if mapping2:
                 df2 = df2.rename(columns={v: k for k, v in mapping2.items()})
             
-            # Round revenue and sale_amount columns to whole numbers
+            # Store original values (with 2 decimal places) for rate calculations
+            df1['original_revenue'] = df1['revenue'].astype(float).round(2)
+            df1['original_sale_amount'] = df1['sale_amount'].astype(float).round(2)
+            df2['original_revenue'] = df2['revenue'].astype(float).round(2)
+            df2['original_sale_amount'] = df2['sale_amount'].astype(float).round(2)
+            
+            # Round revenue and sale_amount for comparison purposes
             df1['revenue'] = df1['revenue'].astype(float).apply(np.floor)
             df1['sale_amount'] = df1['sale_amount'].astype(float).apply(np.floor)
             df2['revenue'] = df2['revenue'].astype(float).apply(np.floor)
@@ -392,7 +398,7 @@ class ExcelValidator:
                     'total_records_file1': len(df1_clean),
                     'total_records_file2': len(df2_clean),
                     'matching_records_count': len(matching_records),
-                    'mismatched_records_count': len(only_in_df1),
+                    'mismatched_records_count': len(only_in_df1)+len(only_in_df2),
                     'only_in_file1_count': len(only_in_df1),
                     'only_in_file2_count': len(only_in_df2)
                 }
@@ -466,10 +472,10 @@ class ExcelValidator:
             # Convert date to month-year format for date range
             df_calc['date_range'] = df_calc['created'].dt.strftime('%Y-%m')
             
-            # Calculate rate for each transaction
+            # Use original values (with 2 decimal places) for rate calculations
             df_calc['rate'] = df_calc.apply(
-                lambda row: round(row['revenue'] / row['sale_amount'], 2) 
-                if row['sale_amount'] != 0 else 0, 
+                lambda row: round(row['original_revenue'] / row['original_sale_amount'], 2) 
+                if row['original_sale_amount'] != 0 else 0, 
                 axis=1
             )
             
@@ -477,21 +483,21 @@ class ExcelValidator:
             brand_summary = []
             
             for (brand, date_range), group in df_calc.groupby(['brand', 'date_range']):
-                # Calculate overall metrics
-                total_revenue = group['revenue'].sum()
-                total_sale_amount = group['sale_amount'].sum()
+                # Calculate overall metrics using original values
+                total_revenue = group['original_revenue'].sum()  # Keep 2 decimal places
+                total_sale_amount = group['original_sale_amount'].sum()  # Keep 2 decimal places
                 calculated_rate = round(total_revenue / total_sale_amount, 2) if total_sale_amount != 0 else 0
                 transaction_count = len(group)
                 
-                # Calculate status-wise metrics
+                # Calculate status-wise metrics using original values
                 status_metrics = {}
                 for status, status_group in group.groupby('status'):
                     status_metrics.update({
-                        f'revenue_{status.lower()}': status_group['revenue'].sum(),
+                        f'revenue_{status.lower()}': status_group['original_revenue'].sum(),  # Keep 2 decimal places
                         f'count_{status.lower()}': len(status_group),
                         f'rate_{status.lower()}': round(
-                            status_group['revenue'].sum() / status_group['sale_amount'].sum(), 2
-                        ) if status_group['sale_amount'].sum() != 0 else 0
+                            status_group['original_revenue'].sum() / status_group['original_sale_amount'].sum(), 2
+                        ) if status_group['original_sale_amount'].sum() != 0 else 0
                     })
                 
                 # Get individual rates as a list
@@ -507,24 +513,24 @@ class ExcelValidator:
                     'total_sale_amount': total_sale_amount,
                     'transaction_count': transaction_count,
                     'calculated_rate': calculated_rate,
-                    **status_metrics  # Include status-wise metrics
+                    **status_metrics
                 }
                 
                 brand_summary.append(record)
             
             result_df = pd.DataFrame(brand_summary)
             
-            # Calculate overall status-wise summary
+            # Calculate overall status-wise summary using original values
             status_summary = df_calc.groupby('status').agg({
-                'revenue': 'sum',
+                'original_revenue': 'sum',  # Use original revenue
                 'txn_id': 'count',
-                'sale_amount': 'sum'
+                'original_sale_amount': 'sum'  # Use original sale amount
             }).reset_index()
             
             # Add calculated rate for each status
             status_summary['rate'] = status_summary.apply(
-                lambda row: round(row['revenue'] / row['sale_amount'], 2) 
-                if row['sale_amount'] != 0 else 0, 
+                lambda row: round(row['original_revenue'] / row['original_sale_amount'], 2) 
+                if row['original_sale_amount'] != 0 else 0, 
                 axis=1
             )
             
@@ -532,7 +538,7 @@ class ExcelValidator:
             status_dict = {}
             for _, row in status_summary.iterrows():
                 status_dict[row['status']] = {
-                    'revenue': row['revenue'],
+                    'revenue': row['original_revenue'],  # Keep 2 decimal places
                     'txn_id': row['txn_id'],
                     'rate': row['rate']
                 }
