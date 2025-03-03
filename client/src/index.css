@@ -80,7 +80,7 @@
   }
 
   .btn-primary {
-    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+    @apply bg-primary text-primary-foreground hover:bg-yellow-300;
   }
 
   .btn-secondary {

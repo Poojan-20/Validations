@@ -263,7 +263,7 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
                       <select
                         value={mapping2[column] || ''}
                         onChange={(e) => handleMappingChange(column, e.target.value, setMapping2)}
-                        className="w-full h-10 px-3 py-2 rounded-md border border-input bg-[#0f3cc9] text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
                         <option value="">Select column</option>
                         {headers2.map((header, index) => (

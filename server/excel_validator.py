@@ -205,6 +205,7 @@ class ExcelValidator:
             revenue_mismatches = []
             status_mismatches = []
             both_mismatches = []
+            status_match_revenue_mismatch = []  # New container for status match but revenue mismatch
             
             # Get common transaction IDs
             common_txns = set(df1['txn_id']).intersection(set(df2['txn_id']))
@@ -217,7 +218,7 @@ class ExcelValidator:
                 rate1 = round(record1['revenue'] / record1['sale_amount'], 2) if record1['sale_amount'] != 0 else 0
                 rate2 = round(record2['revenue'] / record2['sale_amount'], 2) if record2['sale_amount'] != 0 else 0
                 
-                # Base record for comparison
+                # Base record for comparison with dates
                 comparison = {
                     'txn_id': txn_id,
                     f'status_{self.file1_name}': record1['status'],
@@ -229,7 +230,9 @@ class ExcelValidator:
                     f'rate_{self.file1_name}': rate1,
                     f'rate_{self.file2_name}': rate2,
                     f'brand_{self.file1_name}': record1['brand'],
-                    f'brand_{self.file2_name}': record2['brand']
+                    f'brand_{self.file2_name}': record2['brand'],
+                    f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
+                    f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d')
                 }
                 
                 # Check if all relevant fields match exactly
@@ -249,11 +252,31 @@ class ExcelValidator:
                         'Revenue mismatch due to different sale amounts' if rates_match
                         else 'Revenue mismatch due to different rates'
                     )
+                    comparison['date_difference'] = (record1['created'] - record2['created']).days
                     revenue_mismatches.append(comparison)
+                    
+                    # Add to the new status match but revenue mismatch container
+                    status_match_revenue_comparison = {
+                        'txn_id': txn_id,
+                        'status': record1['status'],  # Same for both since status matches
+                        f'revenue_{self.file1_name}': record1['revenue'],
+                        f'revenue_{self.file2_name}': record2['revenue'],
+                        'revenue_difference': record1['revenue'] - record2['revenue'],
+                        f'sale_amount_{self.file1_name}': record1['sale_amount'],
+                        f'sale_amount_{self.file2_name}': record2['sale_amount'],
+                        f'rate_{self.file1_name}': rate1,
+                        f'rate_{self.file2_name}': rate2,
+                        'rate_difference': rate1 - rate2,
+                        f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
+                        f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
+                        'date_difference': (record1['created'] - record2['created']).days
+                    }
+                    status_match_revenue_mismatch.append(status_match_revenue_comparison)
                 
                 # Rule 3: Status doesn't match but revenue matches
                 elif not status_matches and revenue_matches:
                     comparison['validation_result'] = 'Status needs update'
+                    comparison['date_difference'] = (record1['created'] - record2['created']).days
                     status_mismatches.append(comparison)
                 
                 # Rule 4: Both status and revenue don't match
@@ -262,6 +285,7 @@ class ExcelValidator:
                         'Status mismatch and revenue mismatch due to different sale amounts' if rates_match
                         else 'Status mismatch and revenue mismatch due to different rates'
                     )
+                    comparison['date_difference'] = (record1['created'] - record2['created']).days
                     both_mismatches.append(comparison)
             
             # Convert lists to DataFrames
@@ -269,8 +293,25 @@ class ExcelValidator:
                 'valid_records': pd.DataFrame(valid_records) if valid_records else pd.DataFrame(),
                 'revenue_mismatches': pd.DataFrame(revenue_mismatches) if revenue_mismatches else pd.DataFrame(),
                 'status_mismatches': pd.DataFrame(status_mismatches) if status_mismatches else pd.DataFrame(),
-                'both_mismatches': pd.DataFrame(both_mismatches) if both_mismatches else pd.DataFrame()
+                'both_mismatches': pd.DataFrame(both_mismatches) if both_mismatches else pd.DataFrame(),
+                'status_match_revenue_mismatch': pd.DataFrame(status_match_revenue_mismatch) if status_match_revenue_mismatch else pd.DataFrame()
             }
+            
+            # Sort mismatch DataFrames by date difference if they're not empty
+            for key in ['revenue_mismatches', 'status_mismatches', 'both_mismatches', 'status_match_revenue_mismatch']:
+                if not validation_results[key].empty:
+                    if key == 'status_match_revenue_mismatch':
+                        # Sort by revenue difference (absolute value) for the new sheet
+                        validation_results[key] = validation_results[key].sort_values(
+                            by='revenue_difference',
+                            key=abs,
+                            ascending=False
+                        )
+                    else:
+                        validation_results[key] = validation_results[key].sort_values(
+                            by='date_difference', 
+                            ascending=False
+                        )
             
             logger.info("Validation rules applied successfully")
             return validation_results
@@ -461,10 +502,10 @@ class ExcelValidator:
 
     def calculate_rates(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate rates for each brand with status-wise revenue and date range grouping.
+        Calculate distinct rates for each brand with corresponding details.
         """
         try:
-            logger.info("Calculating rates by brand and date range")
+            logger.info("Calculating distinct rates by brand")
             
             # Create a copy to avoid modifying original DataFrame
             df_calc = df.copy()
@@ -472,59 +513,75 @@ class ExcelValidator:
             # Convert date to month-year format for date range
             df_calc['date_range'] = df_calc['created'].dt.strftime('%Y-%m')
             
-            # Use original values (with 2 decimal places) for rate calculations
+            # Calculate rates using original values (with 2 decimal places)
             df_calc['rate'] = df_calc.apply(
                 lambda row: round(row['original_revenue'] / row['original_sale_amount'], 2) 
                 if row['original_sale_amount'] != 0 else 0, 
                 axis=1
             )
             
-            # Group by brand and date_range
-            brand_summary = []
+            # Initialize list to store rate summaries
+            rate_summaries = []
             
-            for (brand, date_range), group in df_calc.groupby(['brand', 'date_range']):
-                # Calculate overall metrics using original values
-                total_revenue = group['original_revenue'].sum()  # Keep 2 decimal places
-                total_sale_amount = group['original_sale_amount'].sum()  # Keep 2 decimal places
-                calculated_rate = round(total_revenue / total_sale_amount, 2) if total_sale_amount != 0 else 0
-                transaction_count = len(group)
+            # Process each brand separately
+            for brand in df_calc['brand'].unique():
+                brand_data = df_calc[df_calc['brand'] == brand]
                 
-                # Calculate status-wise metrics using original values
-                status_metrics = {}
-                for status, status_group in group.groupby('status'):
-                    status_metrics.update({
-                        f'revenue_{status.lower()}': status_group['original_revenue'].sum(),  # Keep 2 decimal places
-                        f'count_{status.lower()}': len(status_group),
-                        f'rate_{status.lower()}': round(
-                            status_group['original_revenue'].sum() / status_group['original_sale_amount'].sum(), 2
-                        ) if status_group['original_sale_amount'].sum() != 0 else 0
-                    })
+                # Get distinct rates for this brand
+                distinct_rates = brand_data['rate'].unique()
                 
-                # Get individual rates as a list
-                rates = group['rate'].tolist()
-                rates_str = ', '.join([f"{rate:.2f}" for rate in rates])
-                
-                # Create summary record
-                record = {
-                    'brand': brand,
-                    'date_range': date_range,
-                    'rates': rates_str,
-                    'total_revenue': total_revenue,
-                    'total_sale_amount': total_sale_amount,
-                    'transaction_count': transaction_count,
-                    'calculated_rate': calculated_rate,
-                    **status_metrics
-                }
-                
-                brand_summary.append(record)
+                # For each distinct rate, gather details
+                for rate in distinct_rates:
+                    rate_records = brand_data[brand_data['rate'] == rate]
+                    
+                    # Group by date range for this rate
+                    for date_range, date_group in rate_records.groupby('date_range'):
+                        # Calculate metrics for this rate and date range
+                        total_revenue = date_group['original_revenue'].sum()
+                        total_sale_amount = date_group['original_sale_amount'].sum()
+                        transaction_count = len(date_group)
+                        
+                        # Get status-wise breakdown
+                        status_breakdown = {}
+                        for status, status_group in date_group.groupby('status'):
+                            status_breakdown.update({
+                                f'revenue_{status.lower()}': status_group['original_revenue'].sum(),
+                                f'count_{status.lower()}': len(status_group)
+                            })
+                        
+                        # Get date range details
+                        start_date = date_group['created'].min().strftime('%Y-%m-%d')
+                        end_date = date_group['created'].max().strftime('%Y-%m-%d')
+                        
+                        # Create summary record
+                        summary = {
+                            'brand': brand,
+                            'rate': rate,
+                            'date_range': date_range,
+                            'date_range_start': start_date,
+                            'date_range_end': end_date,
+                            'total_revenue': total_revenue,
+                            'total_sale_amount': total_sale_amount,
+                            'transaction_count': transaction_count,
+                            **status_breakdown
+                        }
+                        
+                        rate_summaries.append(summary)
             
-            result_df = pd.DataFrame(brand_summary)
+            # Convert to DataFrame and sort
+            result_df = pd.DataFrame(rate_summaries)
+            if not result_df.empty:
+                # Sort by brand, date_range, and rate
+                result_df = result_df.sort_values(
+                    by=['brand', 'date_range', 'rate'],
+                    ascending=[True, False, False]
+                )
             
-            # Calculate overall status-wise summary using original values
+            # Calculate overall status-wise summary
             status_summary = df_calc.groupby('status').agg({
-                'original_revenue': 'sum',  # Use original revenue
+                'original_revenue': 'sum',
                 'txn_id': 'count',
-                'original_sale_amount': 'sum'  # Use original sale amount
+                'original_sale_amount': 'sum'
             }).reset_index()
             
             # Add calculated rate for each status
@@ -534,16 +591,14 @@ class ExcelValidator:
                 axis=1
             )
             
-            # Convert status_summary to dictionary format
+            # Store status summary in DataFrame attributes
             status_dict = {}
             for _, row in status_summary.iterrows():
                 status_dict[row['status']] = {
-                    'revenue': row['original_revenue'],  # Keep 2 decimal places
+                    'revenue': row['original_revenue'],
                     'txn_id': row['txn_id'],
                     'rate': row['rate']
                 }
-            
-            # Add total status-wise summary to the result
             result_df.attrs['status_summary'] = status_dict
             
             logger.info("Rate calculations completed successfully")
@@ -572,28 +627,34 @@ class ExcelValidator:
                 'rates_file1': rates_df1,
                 'rates_file2': rates_df2,
                 'summary': {
-                    'file1_brands': rates_df1['brand'].nunique(),
-                    'file2_brands': rates_df2['brand'].nunique(),
+                    'file1_brands': rates_df1['brand'].nunique() if not rates_df1.empty else 0,
+                    'file2_brands': rates_df2['brand'].nunique() if not rates_df2.empty else 0,
                 }
             }
             
-            # Calculate rate differences for matching brand-date combinations
-            merged_rates = pd.merge(
-                rates_df1, 
-                rates_df2, 
-                on=['brand', 'date_range'], 
-                suffixes=('_file1', '_file2'),
-                how='inner'
-            )
-            
-            if not merged_rates.empty:
-                merged_rates['rate_difference'] = (
-                    merged_rates['calculated_rate_file1'] - 
-                    merged_rates['calculated_rate_file2']
-                ).round(2)
-                
-                rates_comparison['rate_differences'] = merged_rates
-                rates_comparison['summary']['max_rate_diff'] = abs(merged_rates['rate_difference']).max()
+            # Calculate rate differences for matching brand-date combinations if needed
+            if not rates_df1.empty and not rates_df2.empty:
+                try:
+                    merged_rates = pd.merge(
+                        rates_df1, 
+                        rates_df2, 
+                        on=['brand', 'date_range'], 
+                        suffixes=('_file1', '_file2'),
+                        how='inner'
+                    )
+                    
+                    if not merged_rates.empty:
+                        # Use the 'rate' column directly since it's already in our DataFrame
+                        merged_rates['rate_difference'] = (
+                            merged_rates['rate_file1'] - 
+                            merged_rates['rate_file2']
+                        ).round(2)
+                        
+                        rates_comparison['rate_differences'] = merged_rates
+                        rates_comparison['summary']['max_rate_diff'] = abs(merged_rates['rate_difference']).max()
+                except Exception as e:
+                    logger.warning(f"Error calculating rate differences: {str(e)}")
+                    # Continue without rate differences if there's an error
             
             logger.info("Rate comparison completed successfully")
             return rates_comparison

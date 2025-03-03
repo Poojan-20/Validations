@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 import shutil
 import numpy as np
+from openpyxl.styles import PatternFill, Font, Alignment
 
 app = Flask(__name__)
 
@@ -225,16 +226,91 @@ def upload_files():
             comparison_results['status_mismatches'].to_excel(writer, sheet_name='Status Mismatches', index=False)
             comparison_results['both_mismatches'].to_excel(writer, sheet_name='Both Mismatches', index=False)
             
+            # Write the new status match but revenue mismatch sheet
+            if not comparison_results['status_match_revenue_mismatch'].empty:
+                comparison_results['status_match_revenue_mismatch'].to_excel(
+                    writer, 
+                    sheet_name='Status Match Revenue Mismatch',
+                    index=False
+                )
+            
             # Write existing comparison results
             comparison_results['matching_records'].to_excel(writer, sheet_name='Matching Records', index=False)
             comparison_results['value_mismatches'].to_excel(writer, sheet_name='Mismatches', index=False)
             comparison_results['only_in_df1'].to_excel(writer, sheet_name=f'Only in {file1_name}', index=False)
             comparison_results['only_in_df2'].to_excel(writer, sheet_name=f'Only in {file2_name}', index=False)
             
-            # Write rates
+            # Write rates with better formatting
             rate_results = validator.compare_rates()
-            rate_results['rates_file1'].to_excel(writer, sheet_name=f'Rates {file1_name}', index=False)
-            rate_results['rates_file2'].to_excel(writer, sheet_name=f'Rates {file2_name}', index=False)
+            
+            # Write rates for file1
+            if not rate_results['rates_file1'].empty:
+                rates_sheet1 = rate_results['rates_file1']
+                
+                # Write to Excel
+                rates_sheet1.to_excel(
+                    writer, 
+                    sheet_name=f'Rates {file1_name}',
+                    index=False
+                )
+                
+                # Get the worksheet
+                worksheet = writer.sheets[f'Rates {file1_name}']
+                
+                # Format headers using openpyxl styles
+                header_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid')
+                header_font = Font(bold=True)
+                
+                for cell in worksheet[1]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal='center')
+                
+                # Adjust column widths
+                for column in worksheet.columns:
+                    max_length = 0
+                    column = list(column)
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = (max_length + 2)
+                    worksheet.column_dimensions[column[0].column_letter].width = adjusted_width
+            
+            # Write rates for file2
+            if not rate_results['rates_file2'].empty:
+                rates_sheet2 = rate_results['rates_file2']
+                
+                # Write to Excel
+                rates_sheet2.to_excel(
+                    writer, 
+                    sheet_name=f'Rates {file2_name}',
+                    index=False
+                )
+                
+                # Get the worksheet
+                worksheet = writer.sheets[f'Rates {file2_name}']
+                
+                # Format headers
+                for cell in worksheet[1]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal='center')
+                
+                # Adjust column widths
+                for column in worksheet.columns:
+                    max_length = 0
+                    column = list(column)
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = (max_length + 2)
+                    worksheet.column_dimensions[column[0].column_letter].width = adjusted_width
 
             # Write duplicate records
             if not comparison_results['duplicates_file1'].empty:
