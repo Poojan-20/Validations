@@ -15,7 +15,24 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const requiredColumns = ['txn_id', 'revenue', 'sale_amount', 'status', 'brand', 'created']
+  // Base required columns
+  const baseRequiredColumns = [
+    'txn_id', 
+    'revenue', 
+    'sale_amount', 
+    'status', 
+    'brand', 
+    'created', 
+    'click_id'
+  ]
+
+  // Get required columns based on file type
+  const getRequiredColumns = (file) => {
+    if (!file) return baseRequiredColumns
+    return file.name.toLowerCase().includes('trackier') 
+      ? [...baseRequiredColumns, 'conversion_id'] 
+      : baseRequiredColumns
+  }
 
   const onDrop1 = useCallback(acceptedFiles => {
     if (acceptedFiles.length > 0) {
@@ -57,10 +74,18 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
     formData.append('file', file)
     
     try {
-      // Direct API call to Flask endpoint
       const response = await axios.post('/get_headers', formData)
       setHeaders(response.data.headers)
-      setMapping(response.data.suggested_mapping)
+      
+      // Get suggested mapping
+      const suggestedMapping = response.data.suggested_mapping
+      
+      // If it's a Trackier file, ensure conversion_id is included in mapping
+      if (file.name.toLowerCase().includes('trackier')) {
+        console.log('Trackier file detected, including conversion_id mapping')
+      }
+      
+      setMapping(suggestedMapping)
     } catch (error) {
       console.error('Error fetching headers:', error)
       setError(error.response?.data?.error || 'Failed to read file headers')
@@ -76,6 +101,13 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
     }))
   }
 
+  const validateMapping = (file, mapping) => {
+    const isTrackierFile = file.name.toLowerCase().includes('trackier')
+    const requiredCols = getRequiredColumns(file)
+    
+    return requiredCols.every(col => mapping[col])
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     
@@ -84,12 +116,12 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
       return
     }
     
-    // Check if all required columns are mapped
-    const missingColumns1 = requiredColumns.filter(col => !mapping1[col])
-    const missingColumns2 = requiredColumns.filter(col => !mapping2[col])
+    // Check if files are properly mapped
+    const isFile1Valid = validateMapping(file1, mapping1)
+    const isFile2Valid = validateMapping(file2, mapping2)
     
-    if (missingColumns1.length > 0 || missingColumns2.length > 0) {
-      setError(`Please map all required columns: ${[...missingColumns1, ...missingColumns2].join(', ')}`)
+    if (!isFile1Valid || !isFile2Valid) {
+      setError('Please map all required columns for both files')
       return
     }
     
@@ -157,6 +189,29 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
     setMappingFunc({})
   }
 
+  // Render mapping fields based on file type
+  const renderMappingFields = (file, headers, mapping, setMappingFunc) => {
+    const columns = getRequiredColumns(file)
+    
+    return columns.map(column => (
+      <div key={column} className="mb-2">
+        <label className="block text-xs text-muted-foreground mb-1">
+          {column.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+        </label>
+        <select
+          value={mapping[column] || ''}
+          onChange={(e) => handleMappingChange(column, e.target.value, setMappingFunc)}
+          className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <option value="">Select column</option>
+          {headers.map((header, index) => (
+            <option key={index} value={header}>{header}</option>
+          ))}
+        </select>
+      </div>
+    ))
+  }
+
   return (
     <form onSubmit={handleSubmit}>
       {error && (
@@ -201,21 +256,7 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
               {headers1.length > 0 && (
                 <div className="mt-4">
                   <h3 className="text-sm font-medium mb-2 text-foreground">Column Mapping</h3>
-                  {requiredColumns.map(column => (
-                    <div key={column} className="mb-2">
-                      <label className="block text-xs text-muted-foreground mb-1">{column}</label>
-                      <select
-                        value={mapping1[column] || ''}
-                        onChange={(e) => handleMappingChange(column, e.target.value, setMapping1)}
-                        className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      >
-                        <option value="">Select column</option>
-                        {headers1.map((header, index) => (
-                          <option key={index} value={header}>{header}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                  {renderMappingFields(file1, headers1, mapping1, setMapping1)}
                 </div>
               )}
             </div>
@@ -257,21 +298,7 @@ const FileUploader = ({ setIsUploading, setProgress }) => {
               {headers2.length > 0 && (
                 <div className="mt-4">
                   <h3 className="text-sm font-medium mb-2 text-foreground">Column Mapping</h3>
-                  {requiredColumns.map(column => (
-                    <div key={column} className="mb-2">
-                      <label className="block text-xs text-muted-foreground mb-1">{column}</label>
-                      <select
-                        value={mapping2[column] || ''}
-                        onChange={(e) => handleMappingChange(column, e.target.value, setMapping2)}
-                        className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      >
-                        <option value="">Select column</option>
-                        {headers2.map((header, index) => (
-                          <option key={index} value={header}>{header}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                  {renderMappingFields(file2, headers2, mapping2, setMapping2)}
                 </div>
               )}
             </div>

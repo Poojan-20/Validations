@@ -16,7 +16,7 @@ const Logo = () => (
 
 const Header = () => {
   return (
-    <header className="bg-primary text-white shadow-md">
+    <header className="bg-primary text-white shadow-md sticky z-50 top-0">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center gap-4">
           <Logo />

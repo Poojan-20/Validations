@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 class ExcelValidator:
     # Update required columns to include brand and created date
     REQUIRED_COLUMNS = ['txn_id', 'revenue', 'sale_amount', 'status', 'brand', 'created']
+    TRACKIER_REQUIRED_COLUMNS = REQUIRED_COLUMNS + ['click_id', 'conversion_id']
+    CLIENT_REQUIRED_COLUMNS = REQUIRED_COLUMNS + ['click_id']
     
     def __init__(self):
         self.df1: Optional[pd.DataFrame] = None
@@ -78,8 +80,24 @@ class ExcelValidator:
             # Convert column names to lowercase for case-insensitive comparison
             df.columns = df.columns.str.lower()
             
+            # Determine which set of required columns to use based on filename
+            if 'trackier' in file_name.lower():
+                required_cols = self.TRACKIER_REQUIRED_COLUMNS
+                # Validate that both click_id and conversion_id are present
+                if 'click_id' not in df.columns or 'conversion_id' not in df.columns:
+                    raise ValueError(
+                        f"Trackier file must contain both click_id and conversion_id columns"
+                    )
+            else:
+                required_cols = self.CLIENT_REQUIRED_COLUMNS
+                # Validate that click_id is present
+                if 'click_id' not in df.columns:
+                    raise ValueError(
+                        f"Client file must contain click_id column"
+                    )
+            
             # Check for required columns
-            missing_columns = set(self.REQUIRED_COLUMNS) - set(df.columns)
+            missing_columns = set(required_cols) - set(df.columns)
             if missing_columns:
                 raise ValueError(
                     f"Missing required columns in {file_name}: {', '.join(missing_columns)}"
@@ -205,7 +223,8 @@ class ExcelValidator:
             revenue_mismatches = []
             status_mismatches = []
             both_mismatches = []
-            status_match_revenue_mismatch = []  # New container for status match but revenue mismatch
+            status_match_revenue_mismatch = []
+            click_id_mismatches = []
             
             # Get common transaction IDs
             common_txns = set(df1['txn_id']).intersection(set(df2['txn_id']))
@@ -214,13 +233,18 @@ class ExcelValidator:
                 record1 = df1[df1['txn_id'] == txn_id].iloc[0]
                 record2 = df2[df2['txn_id'] == txn_id].iloc[0]
                 
+                # Add click_id comparison
+                click_id_matches = str(record1['click_id']) == str(record2['click_id'])
+                
                 # Calculate rates
                 rate1 = round(record1['revenue'] / record1['sale_amount'], 2) if record1['sale_amount'] != 0 else 0
                 rate2 = round(record2['revenue'] / record2['sale_amount'], 2) if record2['sale_amount'] != 0 else 0
                 
-                # Base record for comparison with dates
+                # Base record for comparison
                 comparison = {
                     'txn_id': txn_id,
+                    f'click_id_{self.file1_name}': record1['click_id'],
+                    f'click_id_{self.file2_name}': record2['click_id'],
                     f'status_{self.file1_name}': record1['status'],
                     f'status_{self.file2_name}': record2['status'],
                     f'revenue_{self.file1_name}': record1['revenue'],
@@ -232,60 +256,61 @@ class ExcelValidator:
                     f'brand_{self.file1_name}': record1['brand'],
                     f'brand_{self.file2_name}': record2['brand'],
                     f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
-                    f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d')
+                    f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
+                    'date_difference': (record1['created'] - record2['created']).days
                 }
                 
-                # Check if all relevant fields match exactly
+                # Add conversion_id if it exists in record2 (Trackier file)
+                if 'conversion_id' in record2:
+                    comparison[f'conversion_id_{self.file2_name}'] = record2['conversion_id']
+                
+                # Check matches
                 status_matches = str(record1['status']) == str(record2['status'])
                 revenue_matches = str(record1['revenue']) == str(record2['revenue'])
                 sale_amount_matches = str(record1['sale_amount']) == str(record2['sale_amount'])
                 rates_match = rate1 == rate2
                 
-                # Rule 1: All fields must match exactly
-                if status_matches and revenue_matches and sale_amount_matches and rates_match:
+                # Create a simplified record for status mismatches (without revenue and sale_amount)
+                status_mismatch_record = {
+                    'txn_id': txn_id,
+                    f'click_id_{self.file1_name}': record1['click_id'],
+                    f'click_id_{self.file2_name}': record2['click_id'],
+                    f'status_{self.file1_name}': record1['status'],
+                    f'status_{self.file2_name}': record2['status'],
+                    f'brand_{self.file1_name}': record1['brand'],
+                    f'brand_{self.file2_name}': record2['brand'],
+                    f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
+                    f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
+                    'date_difference': (record1['created'] - record2['created']).days
+                }
+                
+                # Update validation rules to include click_id
+                if not click_id_matches:
+                    comparison['validation_result'] = 'Click ID mismatch'
+                    click_id_mismatches.append(comparison)
+                elif status_matches and revenue_matches and sale_amount_matches and rates_match:
                     comparison['validation_result'] = 'Valid'
                     valid_records.append(comparison)
-                
-                # Rule 2: Status matches but revenue/sale_amount/rate doesn't
                 elif status_matches and not (revenue_matches and sale_amount_matches and rates_match):
-                    comparison['validation_result'] = (
-                        'Revenue mismatch due to different sale amounts' if rates_match
-                        else 'Revenue mismatch due to different rates'
-                    )
-                    comparison['date_difference'] = (record1['created'] - record2['created']).days
+                    comparison['validation_result'] = 'Revenue mismatch'
                     revenue_mismatches.append(comparison)
                     
-                    # Add to the new status match but revenue mismatch container
+                    # Add to status match but revenue mismatch
                     status_match_revenue_comparison = {
                         'txn_id': txn_id,
-                        'status': record1['status'],  # Same for both since status matches
+                        'status': record1['status'],
                         f'revenue_{self.file1_name}': record1['revenue'],
                         f'revenue_{self.file2_name}': record2['revenue'],
                         'revenue_difference': record1['revenue'] - record2['revenue'],
-                        f'sale_amount_{self.file1_name}': record1['sale_amount'],
-                        f'sale_amount_{self.file2_name}': record2['sale_amount'],
-                        f'rate_{self.file1_name}': rate1,
-                        f'rate_{self.file2_name}': rate2,
-                        'rate_difference': rate1 - rate2,
-                        f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
-                        f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
                         'date_difference': (record1['created'] - record2['created']).days
                     }
                     status_match_revenue_mismatch.append(status_match_revenue_comparison)
-                
-                # Rule 3: Status doesn't match but revenue matches
+                    
                 elif not status_matches and revenue_matches:
-                    comparison['validation_result'] = 'Status needs update'
-                    comparison['date_difference'] = (record1['created'] - record2['created']).days
-                    status_mismatches.append(comparison)
-                
-                # Rule 4: Both status and revenue don't match
+                    status_mismatch_record['validation_result'] = 'Status needs update'
+                    status_mismatches.append(status_mismatch_record)
                 else:
-                    comparison['validation_result'] = (
-                        'Status mismatch and revenue mismatch due to different sale amounts' if rates_match
-                        else 'Status mismatch and revenue mismatch due to different rates'
-                    )
-                    comparison['date_difference'] = (record1['created'] - record2['created']).days
+                    comparison['validation_result'] = 'Both status and revenue mismatch'
                     both_mismatches.append(comparison)
             
             # Convert lists to DataFrames
@@ -294,26 +319,10 @@ class ExcelValidator:
                 'revenue_mismatches': pd.DataFrame(revenue_mismatches) if revenue_mismatches else pd.DataFrame(),
                 'status_mismatches': pd.DataFrame(status_mismatches) if status_mismatches else pd.DataFrame(),
                 'both_mismatches': pd.DataFrame(both_mismatches) if both_mismatches else pd.DataFrame(),
+                'click_id_mismatches': pd.DataFrame(click_id_mismatches) if click_id_mismatches else pd.DataFrame(),
                 'status_match_revenue_mismatch': pd.DataFrame(status_match_revenue_mismatch) if status_match_revenue_mismatch else pd.DataFrame()
             }
             
-            # Sort mismatch DataFrames by date difference if they're not empty
-            for key in ['revenue_mismatches', 'status_mismatches', 'both_mismatches', 'status_match_revenue_mismatch']:
-                if not validation_results[key].empty:
-                    if key == 'status_match_revenue_mismatch':
-                        # Sort by revenue difference (absolute value) for the new sheet
-                        validation_results[key] = validation_results[key].sort_values(
-                            by='revenue_difference',
-                            key=abs,
-                            ascending=False
-                        )
-                    else:
-                        validation_results[key] = validation_results[key].sort_values(
-                            by='date_difference', 
-                            ascending=False
-                        )
-            
-            logger.info("Validation rules applied successfully")
             return validation_results
             
         except Exception as e:
@@ -678,7 +687,9 @@ class ExcelValidator:
             'sale_amount': ['sale_amount', 'sale', 'amount', 'price', 'value', 'order sum', 'ordersum', 'order_amount'],
             'status': ['status', 'state', 'condition', 'order_status', 'orderstatus'],
             'brand': ['brand', 'brand_name', 'advertiser', 'merchant', 'campaign_app_name', 'app_name', 'campaign'],
-            'created': ['created', 'date', 'created_at', 'created_date', 'transaction_date', 'action time', 'datetime']
+            'created': ['created', 'date', 'created_at', 'created_date', 'transaction_date', 'action time', 'datetime'],
+            'click_id': ['click_id', 'clickid', 'click', 'cid', 'click identifier', 'click_identifier'],
+            'conversion_id': ['conversion_id', 'conversionid', 'conversion', 'conv_id', 'conversion identifier', 'conversion_identifier']
         }
         
         # Find best match for each required column
@@ -703,7 +714,6 @@ class ExcelValidator:
                     if required_col in mapping:
                         break
         
-        # Log the mapping results
         logger.info(f"Headers found: {headers}")
         logger.info(f"Suggested mapping: {mapping}")
         

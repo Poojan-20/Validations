@@ -326,6 +326,14 @@ def upload_files():
                     index=False
                 )
 
+            # Write click_id mismatches
+            if not comparison_results['click_id_mismatches'].empty:
+                comparison_results['click_id_mismatches'].to_excel(
+                    writer,
+                    sheet_name='Click ID Mismatches',
+                    index=False
+                )
+
         # Clean up uploaded files
         os.remove(file1_path)
         os.remove(file2_path)
