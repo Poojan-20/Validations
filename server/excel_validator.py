@@ -284,6 +284,10 @@ class ExcelValidator:
                     'date_difference': (record1['created'] - record2['created']).days
                 }
                 
+                # Add conversion_id if it exists in record2 (Trackier file)
+                if 'conversion_id' in record2:
+                    status_mismatch_record[f'conversion_id_{self.file2_name}'] = record2['conversion_id']
+                
                 # Update validation rules to include click_id
                 if not click_id_matches:
                     comparison['validation_result'] = 'Click ID mismatch'

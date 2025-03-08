@@ -236,7 +236,7 @@ def upload_files():
             
             # Write existing comparison results
             comparison_results['matching_records'].to_excel(writer, sheet_name='Matching Records', index=False)
-            comparison_results['value_mismatches'].to_excel(writer, sheet_name='Mismatches', index=False)
+            # comparison_results['value_mismatches'].to_excel(writer, sheet_name='Mismatches', index=False)
             comparison_results['only_in_df1'].to_excel(writer, sheet_name=f'Only in {file1_name}', index=False)
             comparison_results['only_in_df2'].to_excel(writer, sheet_name=f'Only in {file2_name}', index=False)
             
