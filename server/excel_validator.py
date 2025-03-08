@@ -240,7 +240,7 @@ class ExcelValidator:
                 rate1 = round(record1['revenue'] / record1['sale_amount'], 2) if record1['sale_amount'] != 0 else 0
                 rate2 = round(record2['revenue'] / record2['sale_amount'], 2) if record2['sale_amount'] != 0 else 0
                 
-                # Base record for comparison
+                # Base comparison record
                 comparison = {
                     'txn_id': txn_id,
                     f'click_id_{self.file1_name}': record1['click_id'],
@@ -257,7 +257,10 @@ class ExcelValidator:
                     f'brand_{self.file2_name}': record2['brand'],
                     f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
                     f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
-                    'date_difference': (record1['created'] - record2['created']).days
+                    'date_difference': (record1['created'] - record2['created']).days,
+                    'revenue_difference': record1['revenue'] - record2['revenue'],
+                    'sale_amount_difference': record1['sale_amount'] - record2['sale_amount'],
+                    'rate_difference': rate1 - rate2
                 }
                 
                 # Add conversion_id if it exists in record2 (Trackier file)
@@ -270,26 +273,19 @@ class ExcelValidator:
                 sale_amount_matches = str(record1['sale_amount']) == str(record2['sale_amount'])
                 rates_match = rate1 == rate2
                 
-                # Create a simplified record for status mismatches (without revenue and sale_amount)
-                status_mismatch_record = {
-                    'txn_id': txn_id,
-                    f'click_id_{self.file1_name}': record1['click_id'],
-                    f'click_id_{self.file2_name}': record2['click_id'],
-                    f'status_{self.file1_name}': record1['status'],
-                    f'status_{self.file2_name}': record2['status'],
-                    f'brand_{self.file1_name}': record1['brand'],
-                    f'brand_{self.file2_name}': record2['brand'],
-                    f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
-                    f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
-                    'date_difference': (record1['created'] - record2['created']).days
-                }
-                
-                # Add conversion_id if it exists in record2 (Trackier file)
-                if 'conversion_id' in record2:
-                    status_mismatch_record[f'conversion_id_{self.file2_name}'] = record2['conversion_id']
-                
-                # Update validation rules to include click_id
-                if not click_id_matches:
+                # Add revenue mismatch reasoning for both mismatches
+                if not status_matches and not revenue_matches:
+                    # Determine revenue mismatch reason
+                    revenue_mismatch_reasons = []
+                    if not sale_amount_matches:
+                        revenue_mismatch_reasons.append("Sale Amount Mismatch")
+                    if not rates_match:
+                        revenue_mismatch_reasons.append("Rate Mismatch")
+                    
+                    comparison['revenue_mismatch_reason'] = " & ".join(revenue_mismatch_reasons)
+                    comparison['validation_result'] = 'Both status and revenue mismatch'
+                    both_mismatches.append(comparison)
+                elif not click_id_matches:
                     comparison['validation_result'] = 'Click ID mismatch'
                     click_id_mismatches.append(comparison)
                 elif status_matches and revenue_matches and sale_amount_matches and rates_match:
@@ -298,24 +294,26 @@ class ExcelValidator:
                 elif status_matches and not (revenue_matches and sale_amount_matches and rates_match):
                     comparison['validation_result'] = 'Revenue mismatch'
                     revenue_mismatches.append(comparison)
-                    
-                    # Add to status match but revenue mismatch
-                    status_match_revenue_comparison = {
+                elif not status_matches and revenue_matches:
+                    status_mismatch_record = {
                         'txn_id': txn_id,
-                        'status': record1['status'],
+                        f'click_id_{self.file1_name}': record1['click_id'],
+                        f'click_id_{self.file2_name}': record2['click_id'],
+                        f'status_{self.file1_name}': record1['status'],
+                        f'status_{self.file2_name}': record2['status'],
                         f'revenue_{self.file1_name}': record1['revenue'],
                         f'revenue_{self.file2_name}': record2['revenue'],
+                        f'brand_{self.file1_name}': record1['brand'],
+                        f'brand_{self.file2_name}': record2['brand'],
+                        f'date_{self.file1_name}': record1['created'].strftime('%Y-%m-%d'),
+                        f'date_{self.file2_name}': record2['created'].strftime('%Y-%m-%d'),
+                        'date_difference': (record1['created'] - record2['created']).days,
                         'revenue_difference': record1['revenue'] - record2['revenue'],
-                        'date_difference': (record1['created'] - record2['created']).days
+                        'sale_amount_difference': record1['sale_amount'] - record2['sale_amount'],
+                        'rate_difference': rate1 - rate2
                     }
-                    status_match_revenue_mismatch.append(status_match_revenue_comparison)
-                    
-                elif not status_matches and revenue_matches:
                     status_mismatch_record['validation_result'] = 'Status needs update'
                     status_mismatches.append(status_mismatch_record)
-                else:
-                    comparison['validation_result'] = 'Both status and revenue mismatch'
-                    both_mismatches.append(comparison)
             
             # Convert lists to DataFrames
             validation_results = {
@@ -690,9 +688,9 @@ class ExcelValidator:
             'revenue': ['revenue', 'rev', 'earning', 'commission', 'payment', 'payout'],
             'sale_amount': ['sale_amount', 'sale', 'amount', 'price', 'value', 'order sum', 'ordersum', 'order_amount'],
             'status': ['status', 'state', 'condition', 'order_status', 'orderstatus'],
-            'brand': ['brand', 'brand_name', 'advertiser', 'merchant', 'campaign_app_name', 'app_name', 'campaign'],
+            'brand': ['brand', 'brand_name', 'advertiser', 'merchant', 'campaign_app_name', 'app_name', 'campaign','Adv Campaign'],
             'created': ['created', 'date', 'created_at', 'created_date', 'transaction_date', 'action time', 'datetime'],
-            'click_id': ['click_id', 'clickid', 'click', 'cid', 'click identifier', 'click_identifier'],
+            'click_id': ['click_id', 'clickid', 'click', 'cid', 'click identifier', 'click_identifier','SubId4','utm_term'],
             'conversion_id': ['conversion_id', 'conversionid', 'conversion', 'conv_id', 'conversion identifier', 'conversion_identifier']
         }
         
